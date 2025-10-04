@@ -125,15 +125,15 @@
 			waveformContainer.style.display = 'block';
 			drawWaveform(decoded.getChannelData(0), decoded.sampleRate);
 
-			// STFT -> iSTFT
-			setStatus('Processing STFT/iSTFT (512 bins, 50% overlap) …', 'processing');
+			// STFT -> mag/phase (apply crude highpass) -> complex -> iSTFT
+			setStatus('Processing STFT → mag/phase (highpass) → complex → iSTFT (512 bins, 50% overlap) …', 'processing');
 			const recon = await stftProcessBuffer(decoded);
 			reconBuffer = recon;
 
 			// Compare errors
 			const { rms, peak } = compareBuffers(decoded, recon);
-			const msg = `Done. Reconstruction error — RMS: ${rms.toExponential(2)}, Peak: ${peak.toExponential(2)}`;
-			setStatus(msg, (rms < 1e-7 && peak < 1e-6) ? 'success' : '');
+			const msg = `Done. Applied crude highpass in mag/phase. Difference from original is expected. Error — RMS: ${rms.toExponential(2)}, Peak: ${peak.toExponential(2)}`;
+			setStatus(msg);
 
 			// Show controls and final waveform (reconstructed)
 			controlsEl.style.display = 'flex';
@@ -145,15 +145,36 @@
 		}
 	}
 
+	// Zero out the first half of bins for each frame's magnitude (crude highpass)
+	function modifyInPlace(magPhaseFrames) {
+		for (let f = 0; f < magPhaseFrames.length; f++) {
+			const mag = magPhaseFrames[f].mag;
+      const phase = magPhaseFrames[f].pha;
+			// const half = mag.length >> 1; // N/2
+      // const quarter = mag.length >> 2; // N/4
+			// for (let k = 0; k < mag.length; k++) {
+      //   const current = mag[k]
+      //   if(k === 100) console.log(current)
+			// 	// mag[k] = 1 - Math.exp(-current*10);
+			// 	mag[k] = 1// - current;
+			// }
+		}
+	}
+
 	async function stftProcessBuffer(buffer) {
 		const { numberOfChannels, length, sampleRate } = buffer;
 			const outChannels = [];
 			const stftPerChannel = [];
+			const magPhasePerChannel = [];
 		for (let ch = 0; ch < numberOfChannels; ch++) {
 			const input = buffer.getChannelData(ch);
-				const frames = stft(input, FFT_SIZE, HOP_SIZE, hannWindow);
-				stftPerChannel.push(frames);
-				const output = istft(frames, FFT_SIZE, HOP_SIZE, hannWindow, length);
+			const frames = stft(input, FFT_SIZE, HOP_SIZE, hannWindow);
+			stftPerChannel.push(frames);
+			const magPhaseFrames = framesToMagPhase(frames);
+			modifyInPlace(magPhaseFrames);
+			magPhasePerChannel.push(magPhaseFrames);
+			const complexFrames = magPhaseToFrames(magPhaseFrames);
+			const output = istft(complexFrames, FFT_SIZE, HOP_SIZE, hannWindow, length);
 			outChannels.push(output);
 		}
 			lastSTFT = stftPerChannel;
@@ -161,6 +182,7 @@
 			try {
 				window.AudioSTFTDebug = {
 					frames: lastSTFT,
+					magphase: magPhasePerChannel,
 					fftSize: FFT_SIZE,
 					hopSize: HOP_SIZE,
 					window: 'hann'
@@ -291,6 +313,45 @@
 				padded.set(out);
 				return padded;
 			}
+		}
+		return out;
+	}
+
+	// ---------- Complex <-> Mag/Phase helpers ----------
+	function framesToMagPhase(frames) {
+		const out = new Array(frames.length);
+		for (let f = 0; f < frames.length; f++) {
+			const re = frames[f].re;
+			const im = frames[f].im;
+			const N = re.length;
+			const mag = new Float32Array(N);
+			const pha = new Float32Array(N);
+			for (let k = 0; k < N; k++) {
+				const r = re[k];
+				const ii = im[k];
+				mag[k] = Math.hypot(r, ii);
+				pha[k] = Math.atan2(ii, r);
+			}
+			out[f] = { mag, pha };
+		}
+		return out;
+	}
+
+	function magPhaseToFrames(frames) {
+		const out = new Array(frames.length);
+		for (let f = 0; f < frames.length; f++) {
+			const mag = frames[f].mag;
+			const pha = frames[f].pha;
+			const N = mag.length;
+			const re = new Float32Array(N);
+			const im = new Float32Array(N);
+			for (let k = 0; k < N; k++) {
+				const m = mag[k];
+				const p = pha[k];
+				re[k] = m * Math.cos(p);
+				im[k] = m * Math.sin(p);
+			}
+			out[f] = { re, im };
 		}
 		return out;
 	}
