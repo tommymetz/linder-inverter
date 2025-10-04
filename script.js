@@ -148,10 +148,11 @@
 	function modifyInPlace(magPhaseFrames) {
 		for (let f = 0; f < magPhaseFrames.length; f++) {
 			const mag = magPhaseFrames[f].mag;
+      const phase = magPhaseFrames[f].pha;
 
       // Crude high-pass: zero magnitudes for bins with |k| <= cutoffBins, preserving conjugate symmetry
-      // cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2). Example: 0.25 removes the lowest 25% of that band.
-      const cutoffFrac = 0.25
+      // cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2). Example: 0.1 removes the lowest 10% of that band.
+      const cutoffFrac = 0.1; // fraction of positive frequencies to zero out
 			const N = mag.length;
 			const half = N >> 1; // N/2 (Nyquist index)
 			const cutoff = Math.max(0, Math.min(half, Math.floor(half * cutoffFrac)));
@@ -167,13 +168,19 @@
 			const magPhasePerChannel = [];
 		for (let ch = 0; ch < numberOfChannels; ch++) {
 			const input = buffer.getChannelData(ch);
-			const frames = stft(input, FFT_SIZE, HOP_SIZE, hannWindow);
+			// Pad at head and tail to reduce boundary transients; later we trim back
+			const pad = FFT_SIZE;
+			const padded = new Float32Array(length + 2 * pad);
+			padded.set(input, pad);
+			const frames = stft(padded, FFT_SIZE, HOP_SIZE, hannWindow);
 			stftPerChannel.push(frames);
 			const magPhaseFrames = framesToMagPhase(frames);
 			modifyInPlace(magPhaseFrames);
 			magPhasePerChannel.push(magPhaseFrames);
 			const complexFrames = magPhaseToFrames(magPhaseFrames);
-			const output = istft(complexFrames, FFT_SIZE, HOP_SIZE, hannWindow, length);
+			const fullOut = istft(complexFrames, FFT_SIZE, HOP_SIZE, hannWindow);
+			// Trim padding: keep original range [pad, pad+length)
+			const output = fullOut.subarray(pad, pad + length);
 			outChannels.push(output);
 		}
 			lastSTFT = stftPerChannel;
