@@ -177,6 +177,13 @@
 			spectrogramContainerAfter.style.display = 'block';
 			drawSpectrogramOnCanvas(spectrogramCanvasAfter, recon.getChannelData(0), recon.sampleRate);
 			startRAF();
+			// Scroll the controls (play button) into view so users can easily play the result.
+			try {
+				controlsEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			} catch (e) {
+				// fallback: small page scroll
+				try { window.scrollBy(0, 200); } catch {}
+			}
 		} catch (err) {
 			console.error(err);
 			setStatus(`Error: ${err?.message || err}`, 'error');
