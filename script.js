@@ -39,6 +39,9 @@
 	const HOP_SIZE = FFT_SIZE / 2; // 50% overlap
 	const hannWindow = createHannWindow(FFT_SIZE);
 
+	// Canvas dimensions
+	const CANVAS_HEIGHT = 150; // px (75% of previous 200)
+
 	// Precompute FFT tables for performance
 	const fftTables = createFFT(FFT_SIZE);
 
@@ -166,7 +169,7 @@
       const phase = magPhaseFrames[f].pha;
 
       // Crude high-pass: zero magnitudes for bins with |k| <= cutoffBins, preserving conjugate symmetry
-      // cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2). Example: 0.1 removes the lowest 10% of that band.
+      // cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2).
       const cutoffFrac = 0.1; // fraction of positive frequencies to zero out
 			const N = mag.length;
 			const half = N >> 1; // N/2 (Nyquist index)
@@ -458,7 +461,7 @@
 	function drawWaveform(signal, sampleRate) {
 		const dpr = window.devicePixelRatio || 1;
 		const cssWidth = waveformContainer.clientWidth || 600;
-		const cssHeight = 200;
+		const cssHeight = CANVAS_HEIGHT;
 		waveformCanvas.width = Math.floor(cssWidth * dpr);
 		waveformCanvas.height = Math.floor(cssHeight * dpr);
 		waveformCanvas.style.width = cssWidth + 'px';
@@ -512,7 +515,7 @@
 		const dpr = window.devicePixelRatio || 1;
 		const container = canvas.parentElement;
 		const cssWidth = (container?.clientWidth) || 600;
-		const cssHeight = 200;
+		const cssHeight = CANVAS_HEIGHT;
 		canvas.width = Math.floor(cssWidth * dpr);
 		canvas.height = Math.floor(cssHeight * dpr);
 		canvas.style.width = cssWidth + 'px';
@@ -575,24 +578,28 @@
 	function drawSpectrogramOnCanvas(canvas, signal, sampleRate) {
 		// Use the same STFT parameters for the image to keep it consistent
 		const frames = stft(signal, FFT_SIZE, HOP_SIZE, hannWindow);
-		const mags = frames.map(fr => {
-			const m = new Float32Array(fr.re.length);
-			for (let k = 0; k < fr.re.length; k++) m[k] = Math.hypot(fr.re[k], fr.im[k]);
-			return m;
-		});
-		// Convert to log scale and normalize per full image
-		let max = 1e-12;
-		for (const m of mags) for (let k = 0; k < m.length; k++) if (m[k] > max) max = m[k];
-		const logMags = mags.map(m => {
-			const out = new Float32Array(m.length);
-			for (let k = 0; k < m.length; k++) out[k] = Math.log10(1e-12 + m[k] / max);
-			return out;
-		});
+			// Use only the first half (including Nyquist) for real signals
+			const bins = frames.length ? frames[0].re.length : FFT_SIZE;
+			const half = (bins >> 1); // N/2 index (Nyquist)
+			const usedBins = half + 1; // 0..N/2 inclusive
+			const mags = frames.map(fr => {
+				const m = new Float32Array(usedBins);
+				for (let k = 0; k < usedBins; k++) m[k] = Math.hypot(fr.re[k], fr.im[k]);
+				return m;
+			});
+			// Convert to log scale and normalize per full image (only used bins)
+			let max = 1e-12;
+			for (const m of mags) for (let k = 0; k < m.length; k++) if (m[k] > max) max = m[k];
+			const logMags = mags.map(m => {
+				const out = new Float32Array(m.length);
+				for (let k = 0; k < m.length; k++) out[k] = Math.log10(1e-12 + m[k] / max);
+				return out;
+			});
 
 		const dpr = window.devicePixelRatio || 1;
 		const container = canvas.parentElement;
 		const cssWidth = (container?.clientWidth) || 600;
-		const cssHeight = 200;
+		const cssHeight = CANVAS_HEIGHT;
 		canvas.width = Math.floor(cssWidth * dpr);
 		canvas.height = Math.floor(cssHeight * dpr);
 		canvas.style.width = cssWidth + 'px';
@@ -607,14 +614,24 @@
 		ctx.fillRect(0,0,canvas.width,canvas.height);
 
 		const cols = logMags.length;
-		const rows = FFT_SIZE; // full spectrum
+		const rows = usedBins; // show 0..N/2
 		const img = ctx.createImageData(canvas.width, canvas.height);
 		// Purple colormap on white background
 		for (let x = 0; x < canvas.width; x++) {
 			const tIdx = Math.floor(x * cols / canvas.width);
 			const col = logMags[Math.min(tIdx, cols - 1)];
+			// Log-frequency mapping along vertical axis
+			const fNyquist = sampleRate / 2;
+			const fPerBin = fNyquist / half;
+			const fMin = Math.max(20, fPerBin); // avoid log(0), clamp to at least one bin
+			const fMax = fNyquist;
+			const logBase = Math.log(fMax / fMin + 1e-12);
 			for (let y = 0; y < canvas.height; y++) {
-				const freqIdx = Math.floor((1 - y / canvas.height) * (rows - 1));
+				const p = 1 - (y / (canvas.height - 1)); // top->1 (high), bottom->0 (low)
+				const f = fMin * Math.exp(p * logBase); // logarithmic spacing
+				let freqIdx = Math.round(f / fPerBin);
+				if (!isFinite(freqIdx)) freqIdx = 0;
+				freqIdx = Math.max(0, Math.min(rows - 1, freqIdx));
 				const v = col[Math.min(freqIdx, col.length - 1)];
 				const val = Math.max(0, Math.min(1, (v + 6) / 6)); // 0..1
 				const purple = lerpColor([232, 234, 255], [102, 126, 234], val); // light -> brand purple
