@@ -13,6 +13,7 @@
 	const controlsEl = document.getElementById('controls');
 	const playBtn = document.getElementById('playBtn');
 	const pauseBtn = document.getElementById('pauseBtn');
+	const downloadBtn = document.getElementById('downloadBtn');
 	const waveformContainerBefore = document.getElementById('waveformContainerBefore');
 	const waveformCanvasBefore = document.getElementById('waveformCanvasBefore');
 	const waveformContainer = document.getElementById('waveformContainer');
@@ -81,6 +82,18 @@
 		}
 	});
 	pauseBtn.addEventListener('click', () => pause());
+	downloadBtn?.addEventListener('click', async () => {
+		if (!reconBuffer) return;
+		try {
+			const wavBlob = audioBufferToWavBlob(reconBuffer);
+			const baseName = (fileNameEl.textContent || 'audio').replace(/\.[^.]+$/, '');
+			const outName = `${baseName}-lindverted.wav`;
+			triggerDownload(wavBlob, outName);
+		} catch (e) {
+			console.error(e);
+			setStatus('Failed to export WAV', 'error');
+		}
+	});
 
 	// Waveform interactions
 	window.addEventListener('resize', debounce(() => {
@@ -151,6 +164,7 @@
 
 			// Show controls and 'after' waveform (reconstructed)
 			controlsEl.style.display = 'flex';
+			downloadBtn.style.display = 'inline-flex';
 			waveformContainer.style.display = 'block';
 			redrawWaveforms();
 			// Draw 'after' spectrogram
@@ -719,6 +733,66 @@
 	function clamp(x, a, b) { return Math.min(b, Math.max(a, x)); }
 	function debounce(fn, ms) {
 		let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+	}
+
+	// ---------- WAV export ----------
+	function audioBufferToWavBlob(buffer) {
+		const numChannels = buffer.numberOfChannels;
+		const sampleRate = buffer.sampleRate;
+		const length = buffer.length;
+		// 16-bit PCM WAV
+		const bytesPerSample = 2;
+		const blockAlign = numChannels * bytesPerSample;
+		const byteRate = sampleRate * blockAlign;
+		const dataSize = length * blockAlign;
+		const headerSize = 44;
+		const totalSize = headerSize + dataSize;
+		const ab = new ArrayBuffer(totalSize);
+		const view = new DataView(ab);
+
+		// Write WAV header (RIFF)
+		writeString(view, 0, 'RIFF');
+		view.setUint32(4, totalSize - 8, true);
+		writeString(view, 8, 'WAVE');
+		writeString(view, 12, 'fmt ');
+		view.setUint32(16, 16, true); // PCM chunk size
+		view.setUint16(20, 1, true);  // PCM format
+		view.setUint16(22, numChannels, true);
+		view.setUint32(24, sampleRate, true);
+		view.setUint32(28, byteRate, true);
+		view.setUint16(32, blockAlign, true);
+		view.setUint16(34, bytesPerSample * 8, true);
+		writeString(view, 36, 'data');
+		view.setUint32(40, dataSize, true);
+
+		// Interleave channels and write PCM
+		const channels = [];
+		for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
+		let offset = headerSize;
+		for (let i = 0; i < length; i++) {
+			for (let ch = 0; ch < numChannels; ch++) {
+				const sample = Math.max(-1, Math.min(1, channels[ch][i]));
+				view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+				offset += 2;
+			}
+		}
+
+		return new Blob([ab], { type: 'audio/wav' });
+	}
+
+	function writeString(view, offset, str) {
+		for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+	}
+
+	function triggerDownload(blob, filename) {
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
 	}
 })();
 
