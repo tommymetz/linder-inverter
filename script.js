@@ -68,8 +68,16 @@
 			}
 		});
 	});
+	// clicking the drop zone opens the file chooser; ensure the inner Browse button
+	// doesn't bubble its click up to the drop zone (which would call fileInput.click() twice)
 	dropZone.addEventListener('click', () => fileInput.click());
-	browseBtn?.addEventListener('click', () => fileInput.click());
+	if (browseBtn) {
+		browseBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			fileInput.click();
+		});
+	}
 	fileInput.addEventListener('change', () => {
 		const file = fileInput.files?.[0];
 		if (file) handleFile(file);
