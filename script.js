@@ -143,7 +143,7 @@
 
 		try {
 			const arrayBuffer = await readFileAsArrayBuffer(file);
-			setStatus('Decoding audio …', 'processing');
+			setStatus('Decoding audio … This may take a minute.', 'processing');
 			const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 			originalBuffer = decoded;
 
@@ -161,14 +161,14 @@
 			drawSpectrogramOnCanvas(spectrogramCanvasBefore, decoded.getChannelData(0), decoded.sampleRate);
 
 			// STFT -> mag/phase (apply crude highpass) -> complex -> iSTFT
-			setStatus('Processing STFT → mag/phase (highpass) → complex → iSTFT (512 bins, 50% overlap) …', 'processing');
+			// setStatus('Processing STFT → mag/phase (highpass) → complex → iSTFT (512 bins, 50% overlap) …', 'processing');
 			const recon = await stftProcessBuffer(decoded);
 			reconBuffer = recon;
 
 			// Compare errors
 			const { rms, peak } = compareBuffers(decoded, recon);
-			const msg = `Done. Applied crude highpass in mag/phase. Difference from original is expected. Error — RMS: ${rms.toExponential(2)}, Peak: ${peak.toExponential(2)}`;
-			setStatus(msg);
+			const msg = `Done. Diff — RMS: ${rms.toExponential(2)}, Peak: ${peak.toExponential(2)}`;
+			setStatus('');
 
 			// Show controls and 'after' waveform (reconstructed)
 			controlsEl.style.display = 'flex';
@@ -188,16 +188,49 @@
 	function modifyInPlace(magPhaseFrames) {
 		for (let f = 0; f < magPhaseFrames.length; f++) {
 			const mag = magPhaseFrames[f].mag;
-      const phase = magPhaseFrames[f].pha;
+			const binCount = mag.length;
 
-      // Crude high-pass: zero magnitudes for bins with |k| <= cutoffBins, preserving conjugate symmetry
-      // cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2).
-      const cutoffFrac = 0.1; // fraction of positive frequencies to zero out
-			const N = mag.length;
-			const half = N >> 1; // N/2 (Nyquist index)
-			const cutoff = Math.max(0, Math.min(half, Math.floor(half * cutoffFrac)));
-			for (let k = 0; k <= cutoff; k++) mag[k] = 0;
-			for (let k = N - cutoff; k < N; k++) mag[k] = 0;
+			// Crude high-pass example: zero magnitudes for bins with |k| <= cutoffBins, preserving conjugate symmetry.
+			// cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2).
+			// COMMENTED OUT: do not delete
+			// const cutoffFrac = 0.1; // fraction of positive frequencies to zero out
+			// const N = mag.length;
+			// const half = N >> 1; // N/2 (Nyquist index)
+			// const cutoff = Math.max(0, Math.min(half, Math.floor(half * cutoffFrac)));
+			// for (let k = 0; k <= cutoff; k++) mag[k] = 0;
+			// for (let k = N - cutoff; k < N; k++) mag[k] = 0;
+
+			// --- Normalized "inversion" ---
+			// Step 1: gather statistics for this frame.
+			// `frameMax` anchors our inversion around the loudest bin in the frame, and
+			// `originalSum` lets us keep the frame's total magnitude (energy) unchanged later.
+			let frameMax = 0;
+			let originalSum = 0;
+			for (let k = 0; k < binCount; k++) {
+				const m = mag[k];
+				if (m > frameMax) frameMax = m;
+				originalSum += m;
+			}
+			// If the frame is effectively silent, leave it untouched to avoid noise injection.
+			if (frameMax <= 1e-9) continue;
+			// Step 2: invert each bin relative to the loudest bin.
+			// We normalize magnitudes so values near the max map close to 1, then flip (1 - norm).
+			// Multiplying by `frameMax` restores the original units so the spectral shape is mirrored
+			// without forcing everything into the [0,1] range.
+			const denom = frameMax + 1e-6; // stabilize division when magnitudes are tiny
+			const inverted = new Float32Array(binCount);
+			let invertedSum = 0;
+			for (let k = 0; k < binCount; k++) {
+				const norm = mag[k] / denom; // 0..~1 for bins near the frame max
+				const invMag = (1 - norm) * frameMax;
+				inverted[k] = invMag;
+				invertedSum += invMag;
+			}
+			// Step 3: rescale the inverted frame so total energy matches the original sum.
+			// This prevents wild gain jumps when many bins get boosted by the inversion.
+			const scale = invertedSum > 0 ? originalSum / invertedSum : 0;
+			for (let k = 0; k < binCount; k++) mag[k] = inverted[k] * scale;
+			// Phase left intact; array reference retained so downstream conversions stay valid.
 		}
 	}
 
