@@ -149,6 +149,7 @@ h1 {
     overflow: hidden;
     background: #f8f9ff;
     padding: 20px;
+    position: relative;
 }
 
 #waveformCanvas {
@@ -156,6 +157,25 @@ h1 {
     height: 200px;
     display: block;
     cursor: pointer;
+}
+
+#waveformCanvasBefore {
+    width: 100%;
+    height: 200px;
+    display: block;
+}
+
+.waveform-label {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    user-select: none;
+    pointer-events: none;
 }
 
 .status {

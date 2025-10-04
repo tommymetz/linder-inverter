@@ -31,6 +31,11 @@
             <p><strong>Sample Rate:</strong> <span id="fileSampleRate"></span></p>
         </div>
 
+        <div class="waveform-container" id="waveformContainerBefore" style="display: none;">
+            <div class="waveform-label">Before</div>
+            <canvas id="waveformCanvasBefore"></canvas>
+        </div>
+
         <div class="controls" id="controls" style="display: none;">
             <button id="playBtn" class="control-btn play-btn">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -48,6 +53,7 @@
         </div>
 
         <div class="waveform-container" id="waveformContainer" style="display: none;">
+            <div class="waveform-label">After</div>
             <canvas id="waveformCanvas"></canvas>
         </div>
 

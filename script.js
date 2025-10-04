@@ -13,6 +13,8 @@
 	const controlsEl = document.getElementById('controls');
 	const playBtn = document.getElementById('playBtn');
 	const pauseBtn = document.getElementById('pauseBtn');
+	const waveformContainerBefore = document.getElementById('waveformContainerBefore');
+	const waveformCanvasBefore = document.getElementById('waveformCanvasBefore');
 	const waveformContainer = document.getElementById('waveformContainer');
 	const waveformCanvas = document.getElementById('waveformCanvas');
 
@@ -74,7 +76,7 @@
 
 	// Waveform interactions
 	window.addEventListener('resize', debounce(() => {
-		if (reconBuffer) drawWaveform(reconBuffer.getChannelData(0), reconBuffer.sampleRate);
+		redrawWaveforms();
 	}, 150));
 	waveformCanvas.addEventListener('click', (e) => {
 		if (!reconBuffer || !audioCtx) return;
@@ -85,7 +87,7 @@
 		const wasPlaying = isPlaying;
 		stopPlaybackInternal();
 		pauseOffset = newTime;
-		if (wasPlaying) play(); else drawWaveform(reconBuffer.getChannelData(0), reconBuffer.sampleRate);
+		if (wasPlaying) play(); else redrawWaveforms();
 	});
 
 	// Animation for playhead
@@ -93,7 +95,7 @@
 	function startRAF() {
 		cancelAnimationFrame(rafId);
 		const loop = () => {
-			if (reconBuffer) drawWaveform(reconBuffer.getChannelData(0), reconBuffer.sampleRate);
+			redrawWaveforms();
 			rafId = requestAnimationFrame(loop);
 		};
 		rafId = requestAnimationFrame(loop);
@@ -121,9 +123,9 @@
 			fileSampleRateEl.textContent = `${decoded.sampleRate.toLocaleString()} Hz`;
 			fileInfoEl.style.display = 'block';
 
-			// Draw original waveform now (we will overwrite with reconstructed after)
-			waveformContainer.style.display = 'block';
-			drawWaveform(decoded.getChannelData(0), decoded.sampleRate);
+			// Draw 'before' waveform immediately; 'after' once processed
+			waveformContainerBefore.style.display = 'block';
+			drawWaveformOnCanvas(waveformCanvasBefore, decoded.getChannelData(0), decoded.sampleRate, false);
 
 			// STFT -> mag/phase (apply crude highpass) -> complex -> iSTFT
 			setStatus('Processing STFT → mag/phase (highpass) → complex → iSTFT (512 bins, 50% overlap) …', 'processing');
@@ -135,9 +137,10 @@
 			const msg = `Done. Applied crude highpass in mag/phase. Difference from original is expected. Error — RMS: ${rms.toExponential(2)}, Peak: ${peak.toExponential(2)}`;
 			setStatus(msg);
 
-			// Show controls and final waveform (reconstructed)
+			// Show controls and 'after' waveform (reconstructed)
 			controlsEl.style.display = 'flex';
-			drawWaveform(recon.getChannelData(0), recon.sampleRate);
+			waveformContainer.style.display = 'block';
+			redrawWaveforms();
 			startRAF();
 		} catch (err) {
 			console.error(err);
@@ -222,7 +225,7 @@
 			if (!isPlaying) return; // if we paused via stop(), ignore
 			stopPlaybackInternal();
 			pauseOffset = 0;
-			drawWaveform(reconBuffer.getChannelData(0), reconBuffer.sampleRate);
+			redrawWaveforms();
 		};
 	}
 
@@ -231,7 +234,7 @@
 		if (!audioCtx) return;
 		pauseOffset = getCurrentTime();
 		stopPlaybackInternal();
-		drawWaveform(reconBuffer.getChannelData(0), reconBuffer.sampleRate);
+		redrawWaveforms();
 	}
 
 	function stopPlaybackInternal() {
@@ -479,7 +482,7 @@
 		}
 		ctx.stroke();
 
-		// Playhead
+		// Playhead only on 'after' canvas
 		if (reconBuffer) {
 			const t = getCurrentTime();
 			const ratio = reconBuffer.duration ? t / reconBuffer.duration : 0;
@@ -490,6 +493,69 @@
 			ctx.moveTo(x, 0);
 			ctx.lineTo(x, cssHeight);
 			ctx.stroke();
+		}
+	}
+
+	function drawWaveformOnCanvas(canvas, signal, sampleRate, drawPlayhead) {
+		const dpr = window.devicePixelRatio || 1;
+		const container = canvas.parentElement;
+		const cssWidth = (container?.clientWidth) || 600;
+		const cssHeight = 200;
+		canvas.width = Math.floor(cssWidth * dpr);
+		canvas.height = Math.floor(cssHeight * dpr);
+		canvas.style.width = cssWidth + 'px';
+		canvas.style.height = cssHeight + 'px';
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.scale(dpr, dpr);
+		ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+		ctx.fillStyle = '#eaeaff';
+		ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+		const pixels = cssWidth;
+		const step = Math.max(1, Math.floor(signal.length / pixels));
+		const halfH = cssHeight / 2;
+		ctx.strokeStyle = '#667eea';
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		for (let x = 0; x < pixels; x++) {
+			const start = x * step;
+			let min = 1, max = -1;
+			for (let i = 0; i < step && start + i < signal.length; i++) {
+				const v = signal[start + i];
+				if (v < min) min = v;
+				if (v > max) max = v;
+			}
+			const y1 = halfH - min * halfH;
+			const y2 = halfH - max * halfH;
+			ctx.moveTo(x + 0.5, y1);
+			ctx.lineTo(x + 0.5, y2);
+		}
+		ctx.stroke();
+
+		if (drawPlayhead && reconBuffer) {
+			const t = getCurrentTime();
+			const ratio = reconBuffer.duration ? t / reconBuffer.duration : 0;
+			const x = Math.round(ratio * cssWidth) + 0.5;
+			ctx.strokeStyle = '#f59e0b';
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.moveTo(x, 0);
+			ctx.lineTo(x, cssHeight);
+			ctx.stroke();
+		}
+	}
+
+	function redrawWaveforms() {
+		if (originalBuffer) {
+			waveformContainerBefore.style.display = 'block';
+			drawWaveformOnCanvas(waveformCanvasBefore, originalBuffer.getChannelData(0), originalBuffer.sampleRate, false);
+		}
+		if (reconBuffer) {
+			waveformContainer.style.display = 'block';
+			drawWaveformOnCanvas(waveformCanvas, reconBuffer.getChannelData(0), reconBuffer.sampleRate, true);
 		}
 	}
 
