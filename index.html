@@ -9,7 +9,7 @@
 <body>
     <div class="container">
         <h1>Linder Inverter</h1>
-        <p class="description">Choose or Drop a WAV file to process.</p>
+        <p class="description">Normalized inversion mirrors each STFT frame around its loudest bin, flipping magnitudes relative to the frame max and re-scaling to keep the total energy intact. Idea by <a href="https://linktr.ee/isaacLinder" target="_blank" rel="noopener noreferrer">Isaac Linder</a>, coded by <a href="https://tommetzmedia.com" target="_blank" rel="noopener noreferrer">Tommy Metz</a>.</p>
         
         <div id="dropZone" class="drop-zone">
             <div class="drop-zone-content">
@@ -75,8 +75,14 @@
         </div>
 
         <div id="status" class="status"></div>
-    </div>
 
+        <p class="credits">
+            <a href="https://linktr.ee/isaacLinder" target="_blank" rel="noopener noreferrer">Isaac Linder</a>
+            - <a href="https://tommetzmedia.com" target="_blank" rel="noopener noreferrer">Tommy Metz</a>
+            - <a href="https://github.com/tommymetz/linder-inverter" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </p>
+
+    </div>
     <script src="script.js"></script>
 </body>
 </html>
