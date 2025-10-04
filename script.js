@@ -145,19 +145,18 @@
 		}
 	}
 
-	// Zero out the first half of bins for each frame's magnitude (crude highpass)
 	function modifyInPlace(magPhaseFrames) {
 		for (let f = 0; f < magPhaseFrames.length; f++) {
 			const mag = magPhaseFrames[f].mag;
-      const phase = magPhaseFrames[f].pha;
-			// const half = mag.length >> 1; // N/2
-      // const quarter = mag.length >> 2; // N/4
-			// for (let k = 0; k < mag.length; k++) {
-      //   const current = mag[k]
-      //   if(k === 100) console.log(current)
-			// 	// mag[k] = 1 - Math.exp(-current*10);
-			// 	mag[k] = 1// - current;
-			// }
+
+      // Crude high-pass: zero magnitudes for bins with |k| <= cutoffBins, preserving conjugate symmetry
+      // cutoffFrac is 0..1 relative to the positive-frequency band (0..N/2). Example: 0.25 removes the lowest 25% of that band.
+      const cutoffFrac = 0.25
+			const N = mag.length;
+			const half = N >> 1; // N/2 (Nyquist index)
+			const cutoff = Math.max(0, Math.min(half, Math.floor(half * cutoffFrac)));
+			for (let k = 0; k <= cutoff; k++) mag[k] = 0;
+			for (let k = N - cutoff; k < N; k++) mag[k] = 0;
 		}
 	}
 
