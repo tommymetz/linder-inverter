@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio STFT Processor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Audio STFT Processor</h1>
+        <p class="description">Drop a WAV file to process it with STFT (512 bins) and apply a lowpass filter</p>
+        
+        <div id="dropZone" class="drop-zone">
+            <div class="drop-zone-content">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <p>Drag & Drop a WAV file here</p>
+                <p class="or">or</p>
+                <button id="browseBtn" class="browse-btn">Browse Files</button>
+                <input type="file" id="fileInput" accept=".wav,audio/wav" style="display: none;">
+            </div>
+        </div>
+
+        <div id="fileInfo" class="file-info" style="display: none;">
+            <p><strong>File:</strong> <span id="fileName"></span></p>
+            <p><strong>Duration:</strong> <span id="fileDuration"></span></p>
+            <p><strong>Sample Rate:</strong> <span id="fileSampleRate"></span></p>
+        </div>
+
+        <div class="controls" id="controls" style="display: none;">
+            <button id="playBtn" class="control-btn play-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+                Play
+            </button>
+            <button id="pauseBtn" class="control-btn pause-btn" style="display: none;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16"/>
+                    <rect x="14" y="4" width="4" height="16"/>
+                </svg>
+                Pause
+            </button>
+        </div>
+
+        <div class="waveform-container" id="waveformContainer" style="display: none;">
+            <canvas id="waveformCanvas"></canvas>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
