@@ -743,6 +743,15 @@
 		fileInfoEl.style.display = 'none';
 		controlsEl.style.display = 'none';
 		waveformContainer.style.display = 'none';
+		downloadBtn.style.display = 'none';
+		waveformContainerBefore.style.display = 'none';
+		spectrogramContainerBefore.style.display = 'none';
+		spectrogramContainerAfter.style.display = 'none';
+		// Clear any previous drawings so stale visuals don't flash before new processing completes.
+		if (waveformCanvasBefore.width) waveformCanvasBefore.width = waveformCanvasBefore.width;
+		if (waveformCanvas.width) waveformCanvas.width = waveformCanvas.width;
+		if (spectrogramCanvasBefore.width) spectrogramCanvasBefore.width = spectrogramCanvasBefore.width;
+		if (spectrogramCanvasAfter.width) spectrogramCanvasAfter.width = spectrogramCanvasAfter.width;
 		setStatus('');
 	}
 
