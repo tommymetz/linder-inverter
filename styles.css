@@ -9,6 +9,7 @@ body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 20px;
@@ -227,7 +228,7 @@ h1 {
 .credits {
     text-align: center;
     margin-top: 24px;
-    color: #4b5563;
+    color: #ffffff;
     font-size: 0.9rem;
 }
 

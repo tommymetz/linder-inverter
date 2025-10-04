@@ -86,7 +86,7 @@
 	// Playback controls
 	playBtn.addEventListener('click', () => {
 		if (reconBuffer) {
-			play();
+			play().catch(err => console.error('Play failed:', err));
 		}
 	});
 	pauseBtn.addEventListener('click', () => pause());
@@ -114,10 +114,8 @@
 		const x = e.clientX - rect.left;
 		const ratio = clamp(x / rect.width, 0, 1);
 		const newTime = ratio * reconBuffer.duration;
-		const wasPlaying = isPlaying;
-		stopPlaybackInternal();
 		pauseOffset = newTime;
-		if (wasPlaying) play(); else redrawWaveforms();
+		play(newTime).catch(err => console.error('Seek/play failed:', err));
 	});
 
 	// Animation for playhead
@@ -277,17 +275,22 @@
 	}
 
 	// ---------- Playback ----------
-	function play() {
+	async function play(offset = pauseOffset) {
 		if (!audioCtx || !reconBuffer) return;
-		if (isPlaying) return;
-		stopPlaybackInternal();
+		try {
+			if (audioCtx.state === 'suspended') await audioCtx.resume();
+		} catch (err) {
+			console.warn('AudioContext resume failed:', err);
+		}
+		const maxOffset = Math.max(0, reconBuffer.duration - 1e-4);
+		const startOffset = clamp(offset, 0, maxOffset);
+		stopSourceOnly();
 		srcNode = audioCtx.createBufferSource();
 		srcNode.buffer = reconBuffer;
 		srcNode.connect(audioCtx.destination);
-		const offset = clamp(pauseOffset, 0, reconBuffer.duration);
-		const duration = reconBuffer.duration - offset;
-		srcNode.start(0, offset, duration);
-		playStartTime = audioCtx.currentTime - offset;
+		srcNode.start(0, startOffset);
+		playStartTime = audioCtx.currentTime - startOffset;
+		pauseOffset = startOffset;
 		isPlaying = true;
 		playBtn.style.display = 'none';
 		pauseBtn.style.display = 'inline-flex';
@@ -307,12 +310,17 @@
 		redrawWaveforms();
 	}
 
-	function stopPlaybackInternal() {
+	function stopSourceOnly() {
 		if (srcNode) {
+			srcNode.onended = null;
 			try { srcNode.stop(); } catch {}
 			try { srcNode.disconnect(); } catch {}
 		}
 		srcNode = null;
+	}
+
+	function stopPlaybackInternal() {
+		stopSourceOnly();
 		isPlaying = false;
 		playBtn.style.display = 'inline-flex';
 		pauseBtn.style.display = 'none';
