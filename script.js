@@ -17,6 +17,11 @@
 	const waveformCanvasBefore = document.getElementById('waveformCanvasBefore');
 	const waveformContainer = document.getElementById('waveformContainer');
 	const waveformCanvas = document.getElementById('waveformCanvas');
+	// Spectrogram DOM
+	const spectrogramContainerBefore = document.getElementById('spectrogramContainerBefore');
+	const spectrogramCanvasBefore = document.getElementById('spectrogramCanvasBefore');
+	const spectrogramContainerAfter = document.getElementById('spectrogramContainerAfter');
+	const spectrogramCanvasAfter = document.getElementById('spectrogramCanvasAfter');
 
 	// ---------- Audio state ----------
 	let audioCtx = null;
@@ -77,6 +82,7 @@
 	// Waveform interactions
 	window.addEventListener('resize', debounce(() => {
 		redrawWaveforms();
+		redrawSpectrograms();
 	}, 150));
 	waveformCanvas.addEventListener('click', (e) => {
 		if (!reconBuffer || !audioCtx) return;
@@ -126,6 +132,9 @@
 			// Draw 'before' waveform immediately; 'after' once processed
 			waveformContainerBefore.style.display = 'block';
 			drawWaveformOnCanvas(waveformCanvasBefore, decoded.getChannelData(0), decoded.sampleRate, false);
+			// Draw 'before' spectrogram immediately
+			spectrogramContainerBefore.style.display = 'block';
+			drawSpectrogramOnCanvas(spectrogramCanvasBefore, decoded.getChannelData(0), decoded.sampleRate);
 
 			// STFT -> mag/phase (apply crude highpass) -> complex -> iSTFT
 			setStatus('Processing STFT → mag/phase (highpass) → complex → iSTFT (512 bins, 50% overlap) …', 'processing');
@@ -141,6 +150,9 @@
 			controlsEl.style.display = 'flex';
 			waveformContainer.style.display = 'block';
 			redrawWaveforms();
+			// Draw 'after' spectrogram
+			spectrogramContainerAfter.style.display = 'block';
+			drawSpectrogramOnCanvas(spectrogramCanvasAfter, recon.getChannelData(0), recon.sampleRate);
 			startRAF();
 		} catch (err) {
 			console.error(err);
@@ -556,6 +568,81 @@
 		if (reconBuffer) {
 			waveformContainer.style.display = 'block';
 			drawWaveformOnCanvas(waveformCanvas, reconBuffer.getChannelData(0), reconBuffer.sampleRate, true);
+		}
+	}
+
+	// ---------- Spectrogram drawing ----------
+	function drawSpectrogramOnCanvas(canvas, signal, sampleRate) {
+		// Use the same STFT parameters for the image to keep it consistent
+		const frames = stft(signal, FFT_SIZE, HOP_SIZE, hannWindow);
+		const mags = frames.map(fr => {
+			const m = new Float32Array(fr.re.length);
+			for (let k = 0; k < fr.re.length; k++) m[k] = Math.hypot(fr.re[k], fr.im[k]);
+			return m;
+		});
+		// Convert to log scale and normalize per full image
+		let max = 1e-12;
+		for (const m of mags) for (let k = 0; k < m.length; k++) if (m[k] > max) max = m[k];
+		const logMags = mags.map(m => {
+			const out = new Float32Array(m.length);
+			for (let k = 0; k < m.length; k++) out[k] = Math.log10(1e-12 + m[k] / max);
+			return out;
+		});
+
+		const dpr = window.devicePixelRatio || 1;
+		const container = canvas.parentElement;
+		const cssWidth = (container?.clientWidth) || 600;
+		const cssHeight = 200;
+		canvas.width = Math.floor(cssWidth * dpr);
+		canvas.height = Math.floor(cssHeight * dpr);
+		canvas.style.width = cssWidth + 'px';
+		canvas.style.height = cssHeight + 'px';
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		// Work directly in device pixels; do not scale after setting size
+		ctx.setTransform(1,0,0,1,0,0);
+		ctx.clearRect(0,0,canvas.width,canvas.height);
+		// White background (match waveform)
+		ctx.fillStyle = '#ffffff';
+		ctx.fillRect(0,0,canvas.width,canvas.height);
+
+		const cols = logMags.length;
+		const rows = FFT_SIZE; // full spectrum
+		const img = ctx.createImageData(canvas.width, canvas.height);
+		// Purple colormap on white background
+		for (let x = 0; x < canvas.width; x++) {
+			const tIdx = Math.floor(x * cols / canvas.width);
+			const col = logMags[Math.min(tIdx, cols - 1)];
+			for (let y = 0; y < canvas.height; y++) {
+				const freqIdx = Math.floor((1 - y / canvas.height) * (rows - 1));
+				const v = col[Math.min(freqIdx, col.length - 1)];
+				const val = Math.max(0, Math.min(1, (v + 6) / 6)); // 0..1
+				const purple = lerpColor([232, 234, 255], [102, 126, 234], val); // light -> brand purple
+				const idx = (y * canvas.width + x) * 4;
+				img.data[idx + 0] = purple[0];
+				img.data[idx + 1] = purple[1];
+				img.data[idx + 2] = purple[2];
+				img.data[idx + 3] = 255;
+			}
+		}
+		ctx.putImageData(img, 0, 0);
+	}
+
+	function lerpColor(c0, c1, t) {
+		const r = Math.round(c0[0] + (c1[0] - c0[0]) * t);
+		const g = Math.round(c0[1] + (c1[1] - c0[1]) * t);
+		const b = Math.round(c0[2] + (c1[2] - c0[2]) * t);
+		return [r, g, b];
+	}
+
+	function redrawSpectrograms() {
+		if (originalBuffer) {
+			spectrogramContainerBefore.style.display = 'block';
+			drawSpectrogramOnCanvas(spectrogramCanvasBefore, originalBuffer.getChannelData(0), originalBuffer.sampleRate);
+		}
+		if (reconBuffer) {
+			spectrogramContainerAfter.style.display = 'block';
+			drawSpectrogramOnCanvas(spectrogramCanvasAfter, reconBuffer.getChannelData(0), reconBuffer.sampleRate);
 		}
 	}
 
